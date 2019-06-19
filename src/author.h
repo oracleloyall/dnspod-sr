@@ -201,5 +201,5 @@ int run_fetcher(struct fetcher *f);
 int write_back_to_client(mbuf_type *mbuf, uchar *, int);
 int global_cron(struct server *);
 int find_from_db(struct baseinfo *qi, struct fetcher *f);
-
+int write_CAA_client(mbuf_type *mbuf, uchar *, int);
 #endif

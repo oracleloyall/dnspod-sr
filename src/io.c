@@ -70,6 +70,9 @@ int
 read_records_from_file(const char * fn, struct htable *ds,
                        struct rbtree *rbt, int hijack)
 {
+#ifdef DEBUG
+	printf("call read_records_from_file\n");
+#endif
     FILE *fd = NULL;
     uchar vbuffer[5000] = { 0 }, ipv4[4], ipv6[16];
     uchar rbuffer[1024] = { 0 };
@@ -100,6 +103,7 @@ read_records_from_file(const char * fn, struct htable *ds,
     vitor = vbuffer + sizeof(struct mvalue);
 
     while (fgets((char *)rbuffer, 1024, fd) != NULL) {
+
         ritor = rbuffer;
         ps[0] = ritor;
         for (i = 1; i < 5; i++) {
@@ -116,15 +120,36 @@ read_records_from_file(const char * fn, struct htable *ds,
             ttl = MAX_TTL + 1;
         if (tmpttl == NEVER_EXPIRED2)
             ttl = MAX_TTL + 1;
+#ifdef DEBUG
+        printf("\ttmpdomain:%s  ps[1]:%s ps[2]:%s  tmptype:%s ps[4]:%s\t\n",ps[0],ps[1],ps[2],ps[3],ps[4]);
+#endif
         if ((strcmp((const char *)ps[0], (const char *)tmpdomain) != 0)
             || (strcmp((const char *)ps[3], (const char *)tmptype) != 0)) {
-            if (strcmp((const char *)tmptype, "NS") == 0)
+            if (strcmp((const char *)ps[3], "NS") == 0)
                 type = NS;
-            else if (strcmp((const char *)tmptype, "A") == 0)
-                type = A;
-            else if (strcmp((const char *)tmptype, "AAAA") == 0)
+            else if (strcmp((const char *)ps[3], "A") == 0)
+#ifdef DEBUG
+            {
+            //	printf("A value data type:%s\n",ps[3]);
+            //  printf("read line data:%s\n",rbuffer);
+#endif
+                  type = A;
+#ifdef DEBUG
+            }
+#endif
+            else if (strcmp((const char *)ps[3], "AAAA") == 0)
                 type = AAAA;
-            if (strcmp((const char *)tmptype, "CNAME") == 0)
+            else if (strcmp((const char *)ps[3], "CAA") == 0)
+#ifdef DEBUG
+            {
+      //      printf("CAA value data\n");
+            printf("CAA read line data:%s\n",ps[4]);
+#endif
+                  type = CAA;
+#ifdef DEBUG
+            }
+#endif
+            if (strcmp((const char *)ps[3], "CNAME") == 0)
                 type = CNAME;
             dlen = strlen((const char *)tmpdomain) + 1;
             if (dlen > 1) {
@@ -132,7 +157,14 @@ read_records_from_file(const char * fn, struct htable *ds,
 //                 make_type_domain((uchar *)tmpdomain, dlen, type,
 //                         kbuffer);
 //                 memcpy(kbuffer, tmpdomain, dlen);
+#ifdef DEBUG
+           //     printf("\ttype:%d",type);
+                printf("\tinsert_kv_mem:%d vbuffer:%s lowerdomain:%s\n",type,vbuffer,&lowerdomain);
+
+#endif
                 check_dns_name(tmpdomain, &lowerdomain);
+
+
                 insert_kv_mem(rbt, ds, kbuffer, dlen, type, vbuffer, 
                               mv->len + sizeof(struct mvalue), hijack, &lowerdomain); //key value
             }
@@ -178,11 +210,16 @@ read_records_from_file(const char * fn, struct htable *ds,
         type = A;
     if (strcmp((const char *)tmptype, "AAAA") == 0)
         type = AAAA;
+    if (strcmp((const char *)tmptype, "CAA") == 0)
+           type = CAA;
     dlen = strlen((const char *)tmpdomain) + 1;
     if (dlen > 1) {
         str_to_len_label(tmpdomain, dlen);
 //         make_type_domain((uchar *)tmpdomain, dlen, type,
 //                 kbuffer);
+#ifdef DEBUG
+                printf("insert_kv_mem:%d vbuffer:%s lowerdomain:%s\n",type,vbuffer,&lowerdomain);
+#endif
         check_dns_name(tmpdomain, &lowerdomain);
         insert_kv_mem(rbt, ds, kbuffer, dlen, type, vbuffer, 
                       mv->len + sizeof(struct mvalue), hijack, &lowerdomain); //key value

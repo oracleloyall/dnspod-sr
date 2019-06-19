@@ -158,7 +158,11 @@ send_msg_to_client(struct sockinfo *cli, uchar * td, ushort id,
 }
 */
 
+int write_CAA_client(mbuf_type *mbuf, uchar *fr, int vlen)
+{
 
+	 return 0;
+}
 //databuffer format
 //type.mvalue.data.type.mvalue.data...
 int
@@ -200,7 +204,8 @@ write_back_to_client(mbuf_type *mbuf, uchar * fr, int vlen)
         * next A & AAAA & CNAME use previous domain name (cname name).
         * We duplicate here to make it possible to refer previous one.
         */
-        if (type == CNAME && vlen > 1 /*&& mbuf->qtype != ANY*/ && (from[0] == A || from[0] == AAAA || from[0] == CNAME))
+        //DEBUG
+        if (type == CNAME && vlen > 1 /*&& mbuf->qtype != ANY*/ && (from[0] == A || from[0] == AAAA || from[0] == CNAME ||from[0]==CAA))
         {
             main_val++;
             hlp[main_val].name = hlp[main_val - 1].name;
@@ -1136,15 +1141,18 @@ find_record_from_mem(uchar * otd, int dlen, int type, struct htable *datasets,
     dataidx++;                  //add 1 for type. value will be type.mvalue.rrset
     if (type != CNAME)
     {
+    	//DEBUG
+    	//add byzhaoxi type 257 >1 byte
         while ((ret =
                 find_record_with_ttl(datasets, td, dlen, CNAME, databuffer + dataidx,
                                     AUTH_DATA_LEN - dataidx, NULL, h)) > 0) {
-            databuffer[dataidx - 1] = CNAME;        //prev byte is type
+        	databuffer[dataidx - 2] = 0;
+          databuffer[dataidx - 1] = CNAME;        //prev byte is type
             clen = ret - sizeof(struct mvalue);
             td = tdbuffer;
             memcpy(td, databuffer + dataidx + sizeof(struct mvalue), clen);
             dataidx += ret;
-            dataidx++;              //for type
+            dataidx+=2;              //for type
             if (debug-- == 0)       //error
                 return -1;
             thash = 0;
@@ -1157,8 +1165,13 @@ find_record_from_mem(uchar * otd, int dlen, int type, struct htable *datasets,
         find_record_with_ttl(datasets, td, dlen, type, databuffer + dataidx,
                              AUTH_DATA_LEN - dataidx, NULL, h);
     if (ret > 0) {
-        databuffer[dataidx - 1] = type;
-        dataidx += ret;
+#ifdef DEBUG
+    	printf("find_record_with_ttl :type:%d\n",type);
+#endif
+        	databuffer[dataidx - 2] = type >> 8 & 0xff;
+    			databuffer[dataidx - 1] = type & 0xff;
+//        databuffer[dataidx - 1] = type;
+         dataidx += ret;
         return dataidx;
     }
     return -1;
@@ -1220,18 +1233,59 @@ run_fetcher(struct fetcher *f)
             mbuf_free(mbuf);
             continue;
         }
+#ifdef DEBUG
+        	     if(mbuf->qtype==CAA)
+        	   		    {
+        	   				printf("CAA type \n");
+        	   				char *buff=(char *)malloc(sizeof(dnsheader)+sizeof(qdns));
+        	   			  memset(buff,'\0',sizeof(buff));
+        	   				uchar *buf = mbuf->buf;
+        	   				int num;
+        	   				int dlen = 0;
+        	   				dnsheader *dnshead=(dnsheader*)malloc(sizeof(dnsheader));
+        	   				dnsheader *hdr = (dnsheader *) buf;
+        	   				mbuf->err = 0;
+        	   				dnshead->flags = 0;
+        	   				dnshead->flags = SET_QR_R(hdr->flags);
+        	   			//	dnshead->flags = SET_RA(hdr->flags);
+        	   			//	dnshead->flags = DNS_GET16(hdr->flags);
+        	   				dnshead->ancount = DNS_GET16(0);
+        	   				dnshead->nscount = DNS_GET16(0);
+        	   				dnshead->id=hdr->id;
+        	   				dnshead->arcount = 0; //DNS_GET16(0);
+        	   				socklen_t len = sizeof(struct sockaddr_in);
+        	   				((struct sockaddr_in *) (mbuf->addr))->sin_family = AF_INET;
+        	   			  qdns *qd=(qdns*)malloc(sizeof(qdns));
+        	   		   	qd->type = htons(mbuf->qtype);
+        	   			  qd->dclass = htons(1);
+
+                    memcpy(buff,dnshead,sizeof(dnsheader));
+                    memcpy(buff+sizeof(dnsheader),qd,sizeof(qdns));
+        	   			  sendto(mbuf->fd, dnshead, sizeof(dnsheader), 0, (SA *) (mbuf->addr), len);
+        	   		//	  sendto(mbuf->fd, buff, strlen(buff), 0, (SA *) (mbuf->addr), sizeof(dnsheader)+sizeof(qdns));
+        	   				free(dnshead);
+        	   				dnshead=NULL;
+        	   				break;
+        	   			}
+#endif
         f->dataidx = 0;
         mbuf->td = mbuf->lowerdomain.domain;
-        //dbg_print_td(td);
+       //dbg_print_td(td);
         ret =
             find_record_from_mem(mbuf->td, mbuf->dlen, mbuf->qtype, f->s->datasets,
                         f->tdbuffer, f->databuffer, &(mbuf->lowerdomain.hash[0]));
         if (ret > 0) {
+#ifdef DEBUG
+        	     printf("Find record in mem ,write to client ret :%d\n",ret);
+#endif
             write_back_to_client(mbuf, f->databuffer, ret);
             write_log(f->loginfo, f->idx, mbuf->td, mbuf->dlen - 1, mbuf->qtype,
                      mbuf->addr);
             mbuf_free(mbuf);
         } else {
+#ifdef DEBUG
+        	     printf("Not Find record in mem mbuf->qtype:%d\n",mbuf->qtype);
+#endif
             if (mbuf->socktype == TCP)
             {
                 fd = mbuf->fd;

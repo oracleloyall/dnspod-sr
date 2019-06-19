@@ -33,7 +33,7 @@
 #include "storage.h"
 #include "net.h"
 #include "datas.h"
-
+#define DEBUG
 
 //-------------SYSTEM LIMIT----------------------
 #define MAX_LABEL_LEN (63)

@@ -33,7 +33,7 @@ extern char *g_nameservers[];
 
 // //types we support at the moment
 const enum rrtype support_type[SUPPORT_TYPE_NUM] =
-    { A, NS, CNAME, SOA, MX, TXT, AAAA, SRV, PTR };
+    { A, NS, CNAME, SOA, MX, TXT, AAAA, SRV, PTR ,CAA};
 
 
 ////////////////////////////////////////////////////////////////////
@@ -42,6 +42,9 @@ const enum rrtype support_type[SUPPORT_TYPE_NUM] =
 uchar *
 str_to_len_label(uchar * domain, int len)
 {
+#ifdef DEBUG
+	printf("Pre domain:%s\n",domain);
+#endif
     uchar l = 0;
     int i;
     //we need a extran byte to put len.
@@ -56,6 +59,9 @@ str_to_len_label(uchar * domain, int len)
         }
     }
     domain[0] = l;
+#ifdef DEBUG
+	printf("Next domain:%s\n",domain);
+#endif
     return domain;
 }
     
@@ -63,21 +69,11 @@ str_to_len_label(uchar * domain, int len)
 unsigned char SupportTypeTable[256] = {
     0,A,NS,0,0,CNAME,SOA,0,0,0,0,0,PTR,0,0,MX,
     TXT,0,0,0,0,0,0,0,0,0,0,0,AAAA,0,0,0,
-    0,SRV,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    0,SRV,0,0,0,0,0,0,0,0,0,0,0,0,0,0,CAA
 };
+//const enum rrtype support_type[12] =
+//	{ A, NS, CNAME, SOA, MX, TXT, AAAA, SRV, ANY, PTR, HINFO,CAA};
+
 
 #define ISSUPPORTTYPE(_ch)  SupportTypeTable[((unsigned char)_ch)]
 
@@ -85,12 +81,20 @@ unsigned char SupportTypeTable[256] = {
 int
 check_support_type(ushort type)
 {
-    if (type > 0xFF)
+//    if (type > 0xFF)
+//        return -1;
+    int i, num = SUPPORT_TYPE_NUM;
+   // printf("check_support_type:%d\n",type);
+    if(type==CAA){
+    	printf("check_support_type CAA type\n");
+    }
+        for (i = 0; i < num; i++)
+            if (type == support_type[i])
+                return 0;
         return -1;
-    
-    if (ISSUPPORTTYPE((unsigned char)type) != 0)
-        return 0;
-    
+//    if (ISSUPPORTTYPE((unsigned char)type) != 0)
+//        return 0;
+//
     return -1;
 }
 
@@ -130,6 +134,12 @@ passer_dns_data(mbuf_type *mbuf)
     else
         tail += dlen;
     mbuf->qtype = ntohs(*(ushort *) tail);
+#ifdef DEBUG
+    if(257==mbuf->qtype)
+		{
+			printf("CAA type\n");
+		}
+#endif
     if (check_support_type(mbuf->qtype) == 0)
         mbuf->err = 0;
     return;
@@ -450,6 +460,9 @@ unsigned char InvalidDnsNameTable[256] = {
 int
 check_dns_name(uchar * domain, packet_type *lowerdomain)
 {
+#ifdef DEBUG
+	printf("In check_dns_name lowerdomain.domain:%s\n ",lowerdomain->domain);
+#endif
     uchar len = domain[0], i;
     int tlen = 0;       //extra total len and type
     uchar *dst = lowerdomain->domain;
@@ -494,6 +507,9 @@ check_dns_name(uchar * domain, packet_type *lowerdomain)
         lowerdomain->label_len[i] = dst - lowerdomain->label[i];
     }
     tlen = lowerdomain->label_len[0];
+#ifdef DEBUG
+	//printf("Return check_dns_name lowerdomain.domain:%s\n ",lowerdomain->domain);
+#endif
     if (tlen > 255)
         return -1;
     return tlen;
@@ -684,6 +700,15 @@ fill_all_records_in_msg(struct hlpc * h, struct hlpf * hf, int *pidx)
         fm->len = htons(tmp - to + sizeof(uint16_t) * 3);
         to = tmp;
         break;
+        //DEBUG
+    case CAA:
+#ifdef DEBUG
+    	printf("fill_all_records_in_msg CAA\n");
+#endif
+    	  fm->len = htons(hf->len);
+    		memcpy(to, from, hf->len);
+    		to = to + hf->len;
+    		break;
     default:
         break;
     }
@@ -770,21 +795,28 @@ uchar *
 fill_rrset_in_msg(struct hlpc * h, uchar * from, uchar * to, int *pn,
                   uchar * hdr)
 {
-    uchar type;
+//DEBUG
+	//add by zhaoxi
+    int type;
     int i, step = 0;
     uint16_t txtlen = 0;
     struct hlpf hf;
     int num = 0;
     struct mvalue *mv = NULL;
     int n = *pn;
-    type = from[0];
-    from++;                     //type
+    //type = from[0];
+    int temp = from[0];
+    type = (temp << 8) + from[1];
+    from+=2;                     //type
     mv = (struct mvalue *) from;
     from = from + sizeof(struct mvalue);
     num = mv->num;
     if (num > MAX_MSG_SEG) {
         num = MAX_MSG_SEG;
     }
+//    if(type>255)
+  //  		type+=1;
+    int length = *(from + 2);
     hf.hdr = hdr;
     hf.ttl = mv->ttl;
     hf.type = type;
@@ -792,6 +824,9 @@ fill_rrset_in_msg(struct hlpc * h, uchar * from, uchar * to, int *pn,
         step = 4;
     if (type == AAAA)
         step = 16;
+#ifdef DEBUG
+	printf("fill_rrset_in_msg type:%d\n",type);
+#endif
     switch (type)               //7
     {
     case A:
@@ -865,6 +900,29 @@ fill_rrset_in_msg(struct hlpc * h, uchar * from, uchar * to, int *pn,
         }
         return to;
         break;
+        //DEBUG
+        //ADD by zhaoxi
+    case CAA:
+    	for (i = 0; i < num; i++) {
+    	//	printf("CA tto:%s\n",to);
+    				to = fill_name_in_msg(h, to, n);
+    				hf.from = from;
+    				hf.to = to;
+    				hf.len = strlen((const char *)from+1)   + 1;
+    	                        if(hf.len > length)
+    	                        {
+    	                            hf.len = length;
+    	                        }
+    				else
+    				{
+    				    length -= hf.len;
+    				}
+    				to = fill_all_records_in_msg(h, &hf, pn);
+    				from += hf.len;
+    			}
+    	printf("CA tto:%s\n",to);
+    	return to;
+    	break;
     default:
         printf("not support or error in fill msg\n");
         break;

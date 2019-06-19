@@ -291,6 +291,10 @@ uchar *get_val_from_he(struct hentry *he, int type)
         case PTR:
             val = he->val.PTR;
             break;
+            //DEBUG
+        case CAA:
+        	  val = he->val.CAA;
+        	  break;
         default:
             val = NULL;
             break;
@@ -481,6 +485,10 @@ uchar *delete_val_from_he(struct hentry *he, int type)
         case PTR:
             oval = &(he->val.PTR);
             break;
+            //DEBUG
+        case CAA:
+                    oval = &(he->val.CAA);
+                    break;
         default:
             return NULL;
             break;
@@ -686,6 +694,10 @@ int append_value_to_he(struct hentry *he, uchar *val, int type, int replace,
         case PTR:
             oval = &(he->val.PTR);
             break;
+            //DEBUG
+        case CAA:
+        	 oval = &(he->val.CAA);
+        	 break;
         default:
             return HTABLE_INSERT_RET_INVALID_TYPE;
             break;
@@ -743,10 +755,12 @@ htable_insert(struct htable *ht, uchar * key, int klen, int type, uchar * val, i
     struct hdata *hd = NULL;
     /* struct mvalue *pt = NULL;   //protect root and gtld */
     uchar dlen = klen;
-    
+#ifdef DEBUG
+  //  printf("htable_insert check_support_type:%d\n",type);
+#endif
     if (check_support_type(type) == -1)
     {
-        printf("invalud type:%d, key:[%s]\n", type, key);
+        printf("htable_insert invalud type:%d, key:[%s]\n", type, key);
         return -1;
     }
     
@@ -811,7 +825,7 @@ htable_insert_list(struct htable *ht, uchar * key, int klen, int type, uchar * v
 
     if (check_support_type(type) == -1)
     {
-        printf("invalud type:%d, key:[%s]\n", type, key);
+        printf("htable_insert_list invalud type:%d, key:[%s]\n", type, key);
         return -1;
     }
     

@@ -113,9 +113,10 @@ enum rrtype {
     /*gap */ AXFR = 252, MAILB = 253,
     MAILA = 254,                //obsolete
     ANY = 255,             //*,a request for all records
+	  CAA=257,
 };
 
-#define SUPPORT_TYPE_NUM    (9)
+#define SUPPORT_TYPE_NUM    (12)
 typedef struct _type_value
 {
     uchar   *A;
@@ -127,6 +128,8 @@ typedef struct _type_value
     uchar   *AAAA;
     uchar   *SRV;
     uchar   *PTR;
+       //DEBUG
+    uchar   *CAA;
 }type_value;
 
 typedef int (comprbt) (void *, void *, void *);
