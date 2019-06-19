@@ -1,0 +1,2 @@
+_acme-challenge.my.top 518400  IN      TXT    yKc2ILRHDjskF9agg5__S36fPnwC1FI2nwyHQaYlJnM
+my.top.     518400  IN     CAA       0 issue "letsencrypt.org"
