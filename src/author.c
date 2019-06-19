@@ -30,7 +30,8 @@
 #include <unistd.h>
 #include "author.h"
 #include "net.h"
-
+//add by zhaoxi
+#include <ldns/ldns.h>
 uchar qlist_val[10] = "qlist val";
 int
 find_record_from_mem(uchar * otd, int dlen, int type, struct htable *datasets,
@@ -38,6 +39,33 @@ find_record_from_mem(uchar * otd, int dlen, int type, struct htable *datasets,
 int
 add_to_quizzer(struct qoutinfo *qo, struct server *s, int qidx);
 
+extern ldns_zone *zone;
+/* this will probably be moved to a better place in the library itself */
+static ldns_rr_list *
+get_rrset(const ldns_zone *zone, const ldns_rdf *owner_name, const ldns_rr_type qtype, const ldns_rr_class qclass)
+{
+	uint16_t i;
+	ldns_rr_list *rrlist = ldns_rr_list_new();
+	ldns_rr *cur_rr;
+	if (!zone || !owner_name) {
+		fprintf(stderr, "Warning: get_rrset called with NULL zone or owner name\n");
+		return rrlist;
+	}
+
+	for (i = 0; i < ldns_zone_rr_count(zone); i++) {
+		cur_rr = ldns_rr_list_rr(ldns_zone_rrs(zone), i);
+		if (ldns_dname_compare(ldns_rr_owner(cur_rr), owner_name) == 0 &&
+		    ldns_rr_get_class(cur_rr) == qclass &&
+		    ldns_rr_get_type(cur_rr) == qtype
+		   ) {
+			ldns_rr_list_push_rr(rrlist, ldns_rr_clone(cur_rr));
+		}
+	}
+
+	printf("Found rrset of %u rrs\n", (unsigned int) ldns_rr_list_rr_count(rrlist));
+
+	return rrlist;
+}
 int add_query_info(int log_type, int idx, uint16_t type)
 {
     int thread_num = 0;
@@ -1234,10 +1262,9 @@ run_fetcher(struct fetcher *f)
             continue;
         }
 #ifdef DEBUG
-        	     if(mbuf->qtype==CAA)
+        	     if(mbuf->qtype==CAA ||mbuf->qtype==TXT)
         	   		    {
-        	   				printf("CAA type \n");
-        	   				char *buff=(char *)malloc(sizeof(dnsheader)+sizeof(qdns));
+        	   				/*char *buff=(char *)malloc(sizeof(dnsheader)+sizeof(qdns));
         	   			  memset(buff,'\0',sizeof(buff));
         	   				uchar *buf = mbuf->buf;
         	   				int num;
@@ -1247,8 +1274,6 @@ run_fetcher(struct fetcher *f)
         	   				mbuf->err = 0;
         	   				dnshead->flags = 0;
         	   				dnshead->flags = SET_QR_R(hdr->flags);
-        	   			//	dnshead->flags = SET_RA(hdr->flags);
-        	   			//	dnshead->flags = DNS_GET16(hdr->flags);
         	   				dnshead->ancount = DNS_GET16(0);
         	   				dnshead->nscount = DNS_GET16(0);
         	   				dnshead->id=hdr->id;
@@ -1258,15 +1283,73 @@ run_fetcher(struct fetcher *f)
         	   			  qdns *qd=(qdns*)malloc(sizeof(qdns));
         	   		   	qd->type = htons(mbuf->qtype);
         	   			  qd->dclass = htons(1);
-
                     memcpy(buff,dnshead,sizeof(dnsheader));
-                    memcpy(buff+sizeof(dnsheader),qd,sizeof(qdns));
         	   			  sendto(mbuf->fd, dnshead, sizeof(dnsheader), 0, (SA *) (mbuf->addr), len);
-        	   		//	  sendto(mbuf->fd, buff, strlen(buff), 0, (SA *) (mbuf->addr), sizeof(dnsheader)+sizeof(qdns));
         	   				free(dnshead);
         	   				dnshead=NULL;
-        	   				break;
+        	   				*/
+			printf("Read %u resource records in zone file\n",
+					(unsigned int) ldns_zone_rr_count(zone));
+			/* dns */
+			uint8_t *outbuf;
+			ldns_status status;
+			ldns_pkt *query_pkt;
+			ldns_pkt *answer_pkt;
+			size_t answer_size;
+			ldns_rr *query_rr;
+			ldns_rr_list *answer_qr;
+			ldns_rr_list *answer_an;
+			ldns_rr_list *answer_ns;
+			ldns_rr_list *answer_ad;
+			ldns_rdf *origin = NULL;
+			status = ldns_wire2pkt(&query_pkt, mbuf->buf, (size_t) mc->size);
+			if (status != LDNS_STATUS_OK) {
+				printf("Got bad packet: %s\n", ldns_get_errorstr_by_id(status));
+			} else {
+				ldns_pkt_print(stdout, query_pkt);
+			}
+
+			query_rr = ldns_rr_list_rr(ldns_pkt_question(query_pkt), 0);
+			printf("QUERY RR: \n");
+			ldns_rr_print(stdout, query_rr);
+
+			answer_qr = ldns_rr_list_new();
+			ldns_rr_list_push_rr(answer_qr, ldns_rr_clone(query_rr));
+
+			answer_an = get_rrset(zone, ldns_rr_owner(query_rr),
+					ldns_rr_get_type(query_rr), ldns_rr_get_class(query_rr));
+			answer_pkt = ldns_pkt_new();
+			answer_ns = ldns_rr_list_new();
+			answer_ad = ldns_rr_list_new();
+
+			ldns_pkt_set_qr(answer_pkt, 1);
+			ldns_pkt_set_aa(answer_pkt, 1);
+			ldns_pkt_set_id(answer_pkt, ldns_pkt_id(query_pkt));
+
+			ldns_pkt_push_rr_list(answer_pkt, LDNS_SECTION_QUESTION, answer_qr);
+			ldns_pkt_push_rr_list(answer_pkt, LDNS_SECTION_ANSWER, answer_an);
+			ldns_pkt_push_rr_list(answer_pkt, LDNS_SECTION_AUTHORITY,
+					answer_ns);
+			ldns_pkt_push_rr_list(answer_pkt, LDNS_SECTION_ADDITIONAL,
+					answer_ad);
+
+			status = ldns_pkt2wire(&outbuf, answer_pkt, &answer_size);
+
+			printf("Answer packet size: %u bytes.\n",
+					(unsigned int) answer_size);
+			if (status != LDNS_STATUS_OK) {
+				printf("Error creating answer: %s\n",
+						ldns_get_errorstr_by_id(status));
+			} else {
+				//	socklen_t hislen = (socklen_t) sizeof(mbuf->addr);
+				//int	nb = sendto(sock, (void*)outbuf, answer_size, 0,
+				//	&addr_him, hislen);
+				sendto(mbuf->fd, (void*) outbuf, answer_size, 0,
+						(SA *) (mbuf->addr), sizeof(struct sockaddr));
+
         	   			}
+			break;
+        	   		    }
 #endif
         f->dataidx = 0;
         mbuf->td = mbuf->lowerdomain.domain;

@@ -35,7 +35,10 @@
 #include <sys/time.h>
 #include <assert.h>
 #include <signal.h>
-
+//add by zhaoxi
+#include <ldns/ldns.h>
+ldns_zone *zone;
+const char *zone_file="/usr/local/dns-server/TXT_CAA.s";
 //----------------------------------------------
 time_t global_now = 0;
 pthread_mutex_t gnlock;
@@ -357,7 +360,30 @@ void init_mempool()
     if (ret < 0)
         dns_error(0, "create mempool failed");
 }
+void zone_init()
+{
+		int line_nr;
+		ldns_rdf *origin = NULL;
+		FILE *zone_fp;
+		printf("Reading zone file %s\n", zone_file);
+		zone_fp = fopen(zone_file, "r");
+		if (!zone_fp) {
+			fprintf(stderr, "Unable to open %s: %s\n", zone_file, strerror(errno));
+			exit(EXIT_FAILURE);
+		}
+		line_nr = 0;
+		int status = ldns_zone_new_frm_fp_l(&zone, zone_fp, origin, 0, LDNS_RR_CLASS_IN,
+				&line_nr);
 
+		if (status != LDNS_STATUS_OK) {
+			printf("Zone reader failed, aborting\n");
+			exit(EXIT_FAILURE);
+		} else {
+			printf("Read %u resource records in zone file\n",
+					(unsigned int) ldns_zone_rr_count(zone));
+		}
+		fclose(zone_fp);
+}
 int
 main(int argc, char **argv)
 {
@@ -396,6 +422,7 @@ main(int argc, char **argv)
                 break;
         }
     }
+    zone_init();
     sanity_test(0);
     drop_privilege("./");
     daemonrize(daemon);
